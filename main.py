@@ -1,6 +1,5 @@
 import os
 import json
-import asyncio
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -12,7 +11,6 @@ from telegram.ext import (
 )
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
@@ -48,7 +46,6 @@ def ensure_user_exists(uid):
             "mbti": None,
             "height": None,
 
-            # Admin-only
             "join_date": None,
             "left_date": None,
             "invited_by": None,
@@ -83,7 +80,7 @@ async def myinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for k, v in info.items():
         if k in ["join_date", "left_date", "invited_by", "inactive_reason", "banned_reason"]:
             continue
-        msg += f"- *{k.replace('_', ' ').title()}*: {v}\n"
+        msg += f"- *{k.replace('_',' ').title()}*: {v}\n"
 
     await update.message.reply_markdown(msg)
 
@@ -106,7 +103,7 @@ async def thisuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = "📝 *Full User Info:*\n"
     for k, v in info.items():
-        msg += f"- *{k.replace('_', ' ').title()}*: {v}\n"
+        msg += f"- *{k.replace('_',' ').title()}*: {v}\n"
 
     await update.message.reply_markdown(msg)
 
@@ -122,7 +119,7 @@ async def updateinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     db = load_db()
     if not db[str(uid)]["can_edit_self"]:
-        return await update.message.reply_text("❌ You cannot edit your own profile.")
+        return await update.message.reply_text("❌ You cannot edit your own info.")
 
     await update.message.reply_text(
         "Which field do you want to update?\n"
@@ -140,17 +137,17 @@ async def update_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     if field not in allowed:
-        return await update.message.reply_text("❌ Invalid field.")
+        return await update.message.reply_text("❌ Invalid field. Try again.")
 
     context.user_data["field"] = field
-    await update.message.reply_text("Send the value:")
+    await update.message.reply_text("Send the new value:")
     return UPDATE_VALUE
 
 
 async def update_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    new_value = update.message.text
     field = context.user_data["field"]
+    new_value = update.message.text
 
     db = load_db()
     db[str(uid)][field] = new_value
@@ -165,9 +162,9 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
-# ------------------ MAIN ------------------
+# ------------------ MAIN (NO asyncio.run!!) ------------------
 
-async def main():
+def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
     update_conv = ConversationHandler(
@@ -184,9 +181,5 @@ async def main():
     app.add_handler(CommandHandler("thisuser", thisuser))
     app.add_handler(update_conv)
 
-    print("Bot running on PTB 21+…")
-    await app.run_polling()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    print("Bot running with PTB 21+ and Python 3.13…")
+    app.run_polling()_
