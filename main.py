@@ -182,4 +182,4 @@ def main():
     app.add_handler(update_conv)
 
     print("Bot running with PTB 21+ and Python 3.13…")
-    app.run_polling()_
+    app.run_polling()
