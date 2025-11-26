@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -13,16 +14,13 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
-
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# Admin IDs
 ADMINS = {624102836, 8394010826, 548916625}
-
 DB_FILE = "data/users.json"
 
 
-# ------------------ Database Helpers ------------------
+# ------------------ Database ------------------
 
 def load_db():
     if not os.path.exists(DB_FILE):
@@ -36,10 +34,9 @@ def save_db(db):
         json.dump(db, f, indent=4)
 
 
-def ensure_user_exists(user_id):
+def ensure_user_exists(uid):
     db = load_db()
-    uid = str(user_id)
-
+    uid = str(uid)
     if uid not in db:
         db[uid] = {
             "name": None,
@@ -51,90 +48,85 @@ def ensure_user_exists(user_id):
             "mbti": None,
             "height": None,
 
-            # Admin-only fields
+            # Admin-only
             "join_date": None,
             "left_date": None,
             "invited_by": None,
             "inactive_reason": None,
             "banned_reason": None,
 
-            # User permissions
-            "can_edit_self": True,
+            "can_edit_self": True
         }
         save_db(db)
 
 
-# ------------------ Permissions ------------------
-
-def is_admin(user_id):
-    return user_id in ADMINS
+def is_admin(uid):
+    return uid in ADMINS
 
 
-# ------------------ Bot Commands ------------------
+# ------------------ Commands ------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    ensure_user_exists(user.id)
-    await update.message.reply_text("Welcome! Use /myinfo to view your info.")
+    uid = update.effective_user.id
+    ensure_user_exists(uid)
+    await update.message.reply_text("Welcome! Use /myinfo to view your profile.")
 
 
 async def myinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    ensure_user_exists(user.id)
-    db = load_db()
-    info = db[str(user.id)]
+    uid = update.effective_user.id
+    ensure_user_exists(uid)
 
-    msg = "👤 *Your Information:*\n"
-    for key, value in info.items():
-        if key in ["join_date", "left_date", "invited_by", "inactive_reason", "banned_reason"]:
+    db = load_db()
+    info = db[str(uid)]
+
+    msg = "👤 *Your Profile:*\n"
+    for k, v in info.items():
+        if k in ["join_date", "left_date", "invited_by", "inactive_reason", "banned_reason"]:
             continue
-        msg += f"- *{key.replace('_', ' ').title()}*: {value}\n"
+        msg += f"- *{k.replace('_', ' ').title()}*: {v}\n"
 
     await update.message.reply_markdown(msg)
 
 
 async def thisuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-
-    if not is_admin(user.id):
+    uid = update.effective_user.id
+    if not is_admin(uid):
         return await update.message.reply_text("❌ You are not an admin.")
 
-    if len(context.args) == 0:
+    if not context.args:
         return await update.message.reply_text("Usage: /thisuser <telegram_id>")
 
-    target_id = context.args[0]
+    target = context.args[0]
 
     db = load_db()
-    if target_id not in db:
+    if target not in db:
         return await update.message.reply_text("❌ User not found.")
 
-    info = db[target_id]
+    info = db[target]
 
-    msg = "📝 *Full User Info (Admin Only)*\n"
-    for key, value in info.items():
-        msg += f"- *{key.replace('_',' ').title()}*: {value}\n"
+    msg = "📝 *Full User Info:*\n"
+    for k, v in info.items():
+        msg += f"- *{k.replace('_', ' ').title()}*: {v}\n"
 
     await update.message.reply_markdown(msg)
 
 
-# ------------ Update Info Conversation ------------
+# ------------------ Update Conversation ------------------
 
 UPDATE_FIELD, UPDATE_VALUE = range(2)
 
 
 async def updateinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    ensure_user_exists(user.id)
+    uid = update.effective_user.id
+    ensure_user_exists(uid)
 
     db = load_db()
-
-    if not db[str(user.id)].get("can_edit_self", True):
-        return await update.message.reply_text("❌ You cannot edit your profile.")
+    if not db[str(uid)]["can_edit_self"]:
+        return await update.message.reply_text("❌ You cannot edit your own profile.")
 
     await update.message.reply_text(
         "Which field do you want to update?\n"
-        "Options: name, nationality, personal_channel, birthday, "
-        "zodiac, chinese_zodiac, mbti, height"
+        "name, nationality, personal_channel, birthday, zodiac, chinese_zodiac, mbti, height"
     )
     return UPDATE_FIELD
 
@@ -142,31 +134,26 @@ async def updateinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def update_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     field = update.message.text.lower()
     allowed = [
-        "name",
-        "nationality",
-        "personal_channel",
-        "birthday",
-        "zodiac",
-        "chinese_zodiac",
-        "mbti",
-        "height",
+        "name", "nationality", "personal_channel",
+        "birthday", "zodiac", "chinese_zodiac",
+        "mbti", "height"
     ]
 
     if field not in allowed:
-        return await update.message.reply_text("❌ Invalid field. Try again.")
+        return await update.message.reply_text("❌ Invalid field.")
 
     context.user_data["field"] = field
-    await update.message.reply_text(f"Send the new value for *{field}*:")
+    await update.message.reply_text("Send the value:")
     return UPDATE_VALUE
 
 
 async def update_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
+    uid = update.effective_user.id
     new_value = update.message.text
     field = context.user_data["field"]
 
     db = load_db()
-    db[str(user.id)][field] = new_value
+    db[str(uid)][field] = new_value
     save_db(db)
 
     await update.message.reply_text("✔ Updated successfully!")
@@ -174,11 +161,11 @@ async def update_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ Update cancelled.")
+    await update.message.reply_text("❌ Cancelled.")
     return ConversationHandler.END
 
 
-# ------------------ Application (PTB 21+) ------------------
+# ------------------ MAIN ------------------
 
 async def main():
     app = Application.builder().token(BOT_TOKEN).build()
@@ -197,10 +184,9 @@ async def main():
     app.add_handler(CommandHandler("thisuser", thisuser))
     app.add_handler(update_conv)
 
-    print("Bot running on PTB 21+ …")
+    print("Bot running on PTB 21+…")
     await app.run_polling()
 
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
