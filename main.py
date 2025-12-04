@@ -1,12 +1,21 @@
+"""
+Telegram Admin Bot using pyrotgfork
+Features:
+- Owner + Sudo + Global Admin system
+- Add/remove sudo/admin
+- Directory system (groups & channels)
+- Global ban/unban
+- /allstaff with hyperlinks
+- /directory allowed for Owner/Sudo & group admins
+- /ginfo only Owner/Sudo
+"""
+
 import os
-import sqlite3
 import logging
 from typing import Optional
 
-try:
-    from pyrotgfork import Client, filters
-except:
-    from pyrogram import Client, filters
+# Force pyrotgfork only (no pyrogram fallback)
+from pyrotgfork import Client, filters
 
 from config import BOT_TOKEN, OWNER_ID, DB_PATH
 from database import (
@@ -17,18 +26,22 @@ from database import (
     add_global_ban, rm_global_ban, get_global_bans
 )
 
+# Logging
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-
-# Permission helpers
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# PERMISSION CHECK HELPERS
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async def is_owner_or_sudo(app: Client, user_id: int) -> bool:
+    """Owner or Sudo returns TRUE"""
     if user_id == OWNER_ID:
         return True
     return user_id in get_sudos()
 
 
 async def is_group_admin(app: Client, chat_id: int, user_id: int) -> bool:
+    """Check if user is admin in a group"""
     try:
         member = await app.get_chat_member(chat_id, user_id)
         return member.status in ("administrator", "creator")
@@ -36,125 +49,122 @@ async def is_group_admin(app: Client, chat_id: int, user_id: int) -> bool:
         return False
 
 
-# Initialize bot
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# BOT INIT
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 app = Client("admin-bot", bot_token=BOT_TOKEN)
-
-# Initialize database
 init_db()
 
 
-# Start command
-@app.on_message(filters.command("start") & filters.private)
-async def cmd_start(client, message):
-    await message.reply_text("Bot is online and ready!")
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# BASIC COMMANDS
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+@app.on_message(filters.command("start"))
+async def start_cmd(client, message):
+    await message.reply_text("✅ Bot is running (pyrotgfork).")
 
 
-# -----------------------------
-# STAFF MANAGEMENT
-# -----------------------------
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# SUDO MANAGEMENT (Owner + Sudo)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @app.on_message(filters.command("addsudo"))
 async def add_sudo_cmd(client, message):
-    sender = message.from_user.id
-    if not await is_owner_or_sudo(client, sender):
+    if not await is_owner_or_sudo(client, message.from_user.id):
         return await message.reply_text("❌ Unauthorized")
 
-    try:
-        target = int(message.command[1])
-    except:
+    if len(message.command) < 2:
         return await message.reply_text("Usage: /addsudo <user_id>")
 
+    target = int(message.command[1])
     add_sudo(target)
     await message.reply_text(f"✅ Sudo added: `{target}`", parse_mode="md")
 
 
 @app.on_message(filters.command("rmsudo"))
-async def rm_sudo_cmd(client, message):
-    sender = message.from_user.id
-    if not await is_owner_or_sudo(client, sender):
+async def remove_sudo_cmd(client, message):
+    if not await is_owner_or_sudo(client, message.from_user.id):
         return await message.reply_text("❌ Unauthorized")
 
-    try:
-        target = int(message.command[1])
-    except:
+    if len(message.command) < 2:
         return await message.reply_text("Usage: /rmsudo <user_id>")
 
+    target = int(message.command[1])
     rm_sudo(target)
-    await message.reply_text(f"✅ Sudo removed: `{target}`", parse_mode="md")
+    await message.reply_text(f"🗑 Removed sudo `{target}`", parse_mode="md")
 
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# GLOBAL ADMINS (Owner + Sudo)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @app.on_message(filters.command("addadmin"))
 async def add_admin_cmd(client, message):
-    sender = message.from_user.id
-    if not await is_owner_or_sudo(client, sender):
+    if not await is_owner_or_sudo(client, message.from_user.id):
         return await message.reply_text("❌ Unauthorized")
 
-    try:
-        target = int(message.command[1])
-    except:
+    if len(message.command) < 2:
         return await message.reply_text("Usage: /addadmin <user_id>")
 
+    target = int(message.command[1])
     add_global_admin(target)
-    await message.reply_text(f"✅ Global admin added: `{target}`", parse_mode="md")
+    await message.reply_text(f"✅ Global admin added `{target}`")
 
 
 @app.on_message(filters.command("rmadmin"))
 async def rm_admin_cmd(client, message):
-    sender = message.from_user.id
-    if not await is_owner_or_sudo(client, sender):
+    if not await is_owner_or_sudo(client, message.from_user.id):
         return await message.reply_text("❌ Unauthorized")
 
-    try:
-        target = int(message.command[1])
-    except:
+    if len(message.command) < 2:
         return await message.reply_text("Usage: /rmadmin <user_id>")
 
+    target = int(message.command[1])
     rm_global_admin(target)
-    await message.reply_text(f"✅ Global admin removed: `{target}`", parse_mode="md")
+    await message.reply_text(f"🗑 Global admin removed `{target}`")
 
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ALL STAFF
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @app.on_message(filters.command("allstaff"))
-async def all_staff(client, message):
+async def allstaff_cmd(client, message):
     if not await is_owner_or_sudo(client, message.from_user.id):
         return await message.reply_text("❌ Unauthorized")
 
     sudos = get_sudos()
     text = f"👑 **Owner:** [Owner](tg://user?id={OWNER_ID}) (`{OWNER_ID}`)\n\n"
 
-    if sudos:
-        text += "🔧 **Sudos:**\n"
-        for uid in sudos:
-            text += f"- [User](tg://user?id={uid}) (`{uid}`)\n"
-    else:
-        text += "No sudos added."
+    text += "🔧 **Sudos:**\n" if sudos else "No sudos.\n"
+
+    for s in sudos:
+        text += f"- [User](tg://user?id={s}) (`{s}`)\n"
 
     await message.reply_text(text, parse_mode="md")
 
 
-# -----------------------------
-# DIRECTORY
-# -----------------------------
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# DIRECTORY SYSTEM
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @app.on_message(filters.command("directory"))
-async def cmd_directory(client, message):
-    user = message.from_user.id
+async def directory_cmd(client, message):
+    sender = message.from_user.id
     chat = message.chat
 
-    allowed = False
-    if await is_owner_or_sudo(client, user):
-        allowed = True
-    elif chat.type in ("group", "supergroup"):
-        if await is_group_admin(client, chat.id, user):
-            allowed = True
+    # Allowed: owner + sudo + group admins
+    allowed = (
+        await is_owner_or_sudo(client, sender)
+        or (chat.type in ("group", "supergroup") and await is_group_admin(client, chat.id, sender))
+    )
 
     if not allowed:
-        return await message.reply_text("❌ No permission.")
+        return await message.reply_text("❌ You cannot use this command.")
 
-    rows = get_directory()
-    if not rows:
-        return await message.reply_text("Directory empty.")
+    items = get_directory()
+    if not items:
+        return await message.reply_text("📭 Directory is empty.")
 
     text = ""
-    for r in rows:
-        text += f"- [{r['title']}]({r['link']}) — `{r['chat_id']}` ({r['chat_type']})\n"
+    for row in items:
+        text += f"- [{row['title']}]({row['link']}) — `{row['chat_id']}` ({row['chat_type']})\n"
 
     await message.reply_text(text, parse_mode="md")
 
@@ -164,21 +174,20 @@ async def add_group_cmd(client, message):
     if not await is_owner_or_sudo(client, message.from_user.id):
         return await message.reply_text("❌ Unauthorized")
 
-    try:
-        cid = int(message.command[1])
-        link = message.command[2]
-    except:
-        return await message.reply_text("Usage: /addgroup <id> <link>")
+    if len(message.command) < 3:
+        return await message.reply_text("Usage: /addgroup <chat_id> <group_link>")
 
-    title = None
+    cid = int(message.command[1])
+    link = message.command[2]
+
     try:
         chat = await client.get_chat(cid)
-        title = chat.title
+        title = chat.title or "Unknown Group"
     except:
-        title = "Unknown"
+        title = "Unknown Group"
 
     add_directory(cid, "group", link, title)
-    await message.reply_text("✅ Group added to directory.")
+    await message.reply_text("✅ Group added.")
 
 
 @app.on_message(filters.command("rmgroup"))
@@ -186,36 +195,33 @@ async def rm_group_cmd(client, message):
     if not await is_owner_or_sudo(client, message.from_user.id):
         return await message.reply_text("❌ Unauthorized")
 
-    try:
-        cid = int(message.command[1])
-    except:
-        return await message.reply_text("Usage: /rmgroup <id>")
+    if len(message.command) < 2:
+        return await message.reply_text("Usage: /rmgroup <chat_id>")
 
+    cid = int(message.command[1])
     rm_directory(cid)
-    await message.reply_text("✅ Group removed.")
+    await message.reply_text("🗑 Group removed.")
 
 
-# CHANNEL MANAGEMENT
 @app.on_message(filters.command("addchannel"))
 async def add_channel_cmd(client, message):
     if not await is_owner_or_sudo(client, message.from_user.id):
         return await message.reply_text("❌ Unauthorized")
 
-    try:
-        cid = int(message.command[1])
-        link = message.command[2]
-    except:
-        return await message.reply_text("Usage: /addchannel <id> <link>")
+    if len(message.command) < 3:
+        return await message.reply_text("Usage: /addchannel <chat_id> <link>")
 
-    title = None
+    cid = int(message.command[1])
+    link = message.command[2]
+
     try:
         chat = await client.get_chat(cid)
-        title = chat.title
+        title = chat.title or "Unknown Channel"
     except:
-        title = "Unknown"
+        title = "Unknown Channel"
 
     add_directory(cid, "channel", link, title)
-    await message.reply_text("✅ Channel added.")
+    await message.reply_text("📡 Channel added.")
 
 
 @app.on_message(filters.command("rmchannel"))
@@ -223,93 +229,83 @@ async def rm_channel_cmd(client, message):
     if not await is_owner_or_sudo(client, message.from_user.id):
         return await message.reply_text("❌ Unauthorized")
 
-    try:
-        cid = int(message.command[1])
-    except:
-        return await message.reply_text("Usage: /rmchannel <id>")
+    if len(message.command) < 2:
+        return await message.reply_text("Usage: /rmchannel <chat_id>")
 
+    cid = int(message.command[1])
     rm_directory(cid)
-    await message.reply_text("✅ Channel removed.")
+    await message.reply_text("🗑 Channel removed.")
 
 
-# -----------------------------
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # GLOBAL BAN SYSTEM
-# -----------------------------
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @app.on_message(filters.command("nban"))
-async def global_ban(client, message):
+async def nban_cmd(client, message):
     if not await is_owner_or_sudo(client, message.from_user.id):
         return await message.reply_text("❌ Unauthorized")
 
-    try:
-        target = int(message.command[1])
-    except:
-        return await message.reply_text("Usage: /nban <id>")
+    if len(message.command) < 2:
+        return await message.reply_text("Usage: /nban <user_id>")
 
-    rows = get_directory()
-
+    target = int(message.command[1])
     add_global_ban(target)
-    ok = no = 0
 
-    for r in rows:
+    ok = fail = 0
+    for d in get_directory():
         try:
-            await client.ban_chat_member(r["chat_id"], target)
+            await client.ban_chat_member(d["chat_id"], target)
             ok += 1
         except:
-            no += 1
+            fail += 1
 
-    await message.reply_text(f"Global ban complete. Success: {ok}, Failed: {no}")
+    await message.reply_text(f"🚫 Global Ban → Success: {ok}, Failed: {fail}")
 
 
 @app.on_message(filters.command("unban"))
-async def global_unban(client, message):
+async def unban_cmd(client, message):
     if not await is_owner_or_sudo(client, message.from_user.id):
         return await message.reply_text("❌ Unauthorized")
 
-    try:
-        target = int(message.command[1])
-    except:
-        return await message.reply_text("Usage: /unban <id>")
+    if len(message.command) < 2:
+        return await message.reply_text("Usage: /unban <user_id>")
 
+    target = int(message.command[1])
     rm_global_ban(target)
-    ok = no = 0
 
-    for r in get_directory():
+    ok = fail = 0
+    for d in get_directory():
         try:
-            await client.unban_chat_member(r["chat_id"], target)
+            await client.unban_chat_member(d["chat_id"], target)
             ok += 1
         except:
-            no += 1
+            fail += 1
 
-    await message.reply_text(f"Global unban complete. Success: {ok}, Failed: {no}")
+    await message.reply_text(f"♻ Global Unban → Success: {ok}, Failed: {fail}")
 
 
-# -----------------------------
-# GINFO (Owner/Sudo only)
-# -----------------------------
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# GROUP INFO (Owner + Sudo ONLY)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @app.on_message(filters.command("ginfo"))
 async def ginfo_cmd(client, message):
     if not await is_owner_or_sudo(client, message.from_user.id):
-        return await message.reply_text("❌ Unauthorized")
+        return await message.reply_text("❌ Owner/Sudo only.")
 
-    target = None
-
-    if len(message.command) > 1:
-        try:
-            target = int(message.command[1])
-        except:
-            return await message.reply_text("Usage: /ginfo <chat_id>")
+    if len(message.command) >= 2:
+        chat_id = int(message.command[1])
     else:
         if message.chat.type in ("group", "supergroup"):
-            target = message.chat.id
+            chat_id = message.chat.id
         else:
-            return await message.reply_text("Use /ginfo <chat_id>.")
+            return await message.reply_text("Usage: /ginfo <chat_id>")
 
     try:
-        chat = await client.get_chat(target)
-        members = await client.get_chat_members_count(target)
+        chat = await client.get_chat(chat_id)
+        members = await client.get_chat_members_count(chat_id)
 
         text = (
-            f"📌 **Group Info**\n\n"
+            f"📊 **Group Info**:\n\n"
             f"Title: `{chat.title}`\n"
             f"ID: `{chat.id}`\n"
             f"Type: `{chat.type}`\n"
@@ -317,14 +313,13 @@ async def ginfo_cmd(client, message):
         )
 
         await message.reply_text(text, parse_mode="md")
-
     except:
-        await message.reply_text("Failed to fetch group info.")
+        await message.reply_text("❌ Could not fetch group info.")
 
 
-# -----------------------------
-# BOT RUN
-# -----------------------------
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# RUN BOT
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 if __name__ == "__main__":
-    print("Bot starting...")
+    print("Bot is running with pyrotgfork...")
     app.run()
