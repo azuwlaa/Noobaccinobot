@@ -1,9 +1,11 @@
+# database.py
 import sqlite3
+from typing import List, Optional
 
-DB_PATH = "bot_data.db"
+from config import DB_PATH
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -42,10 +44,7 @@ def init_db():
     db.commit()
     db.close()
 
-
-# -------------------------
-# SUDO FUNCTIONS
-# -------------------------
+# Sudo functions
 def add_sudo(user_id: int):
     db = get_db()
     cur = db.cursor()
@@ -60,18 +59,15 @@ def rm_sudo(user_id: int):
     db.commit()
     db.close()
 
-def get_sudos():
+def get_sudos() -> List[int]:
     db = get_db()
     cur = db.cursor()
     cur.execute("SELECT user_id FROM sudos")
     rows = cur.fetchall()
     db.close()
-    return [r[0] for r in rows]
+    return [r["user_id"] for r in rows]
 
-
-# -------------------------
-# GLOBAL ADMINS
-# -------------------------
+# Global admin functions
 def add_global_admin(user_id: int):
     db = get_db()
     cur = db.cursor()
@@ -86,25 +82,22 @@ def rm_global_admin(user_id: int):
     db.commit()
     db.close()
 
-def get_global_admins():
+def get_global_admins() -> List[int]:
     db = get_db()
     cur = db.cursor()
     cur.execute("SELECT user_id FROM global_admins")
     rows = cur.fetchall()
     db.close()
-    return [r[0] for r in rows]
+    return [r["user_id"] for r in rows]
 
-
-# -------------------------
-# DIRECTORY
-# -------------------------
-def add_directory(chat_id: int, chat_type: str, link: str, title: str = ""):
+# Directory
+def add_directory(chat_id: int, chat_type: str, link: str, title: Optional[str] = ""):
     db = get_db()
     cur = db.cursor()
-    cur.execute("""
-        INSERT OR REPLACE INTO directory (chat_id, chat_type, link, title)
-        VALUES (?, ?, ?, ?)
-    """, (chat_id, chat_type, link, title))
+    cur.execute(
+        "INSERT OR REPLACE INTO directory (chat_id, chat_type, link, title) VALUES (?, ?, ?, ?)",
+        (chat_id, chat_type, link, title or "")
+    )
     db.commit()
     db.close()
 
@@ -118,22 +111,16 @@ def rm_directory(chat_id: int):
 def get_directory():
     db = get_db()
     cur = db.cursor()
-    cur.execute("SELECT * FROM directory")
+    cur.execute("SELECT chat_id, chat_type, link, title FROM directory")
     rows = cur.fetchall()
     db.close()
     return rows
 
-
-# -------------------------
-# GLOBAL BAN
-# -------------------------
+# Global bans
 def add_global_ban(user_id: int, reason: str = ""):
     db = get_db()
     cur = db.cursor()
-    cur.execute("""
-        INSERT OR IGNORE INTO banned_global (user_id, reason)
-        VALUES (?, ?)
-    """, (user_id, reason))
+    cur.execute("INSERT OR IGNORE INTO banned_global (user_id, reason) VALUES (?, ?)", (user_id, reason))
     db.commit()
     db.close()
 
@@ -144,10 +131,10 @@ def rm_global_ban(user_id: int):
     db.commit()
     db.close()
 
-def get_global_bans():
+def get_global_bans() -> List[int]:
     db = get_db()
     cur = db.cursor()
     cur.execute("SELECT user_id FROM banned_global")
     rows = cur.fetchall()
     db.close()
-    return [r[0] for r in rows]
+    return [r["user_id"] for r in rows]
