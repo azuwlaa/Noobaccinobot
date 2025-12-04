@@ -1,313 +1,393 @@
-import os
+# main.py
 import logging
 from typing import Optional
 
-# Force pyrotgfork only (no pyrogram fallback)
-from pyrotgfork import Client, filters
-
-from config import BOT_TOKEN, OWNER_ID, DB_PATH
-from database import (
-    init_db, get_db,
-    add_sudo, rm_sudo, get_sudos,
-    add_global_admin, rm_global_admin, get_global_admins,
-    add_directory, rm_directory, get_directory,
-    add_global_ban, rm_global_ban, get_global_bans
+from telegram import Update, Chat, ChatMember, constants
+from telegram.ext import (
+    ApplicationBuilder,
+    ContextTypes,
+    CommandHandler,
+    filters,
 )
 
-# Logging
+from config import BOT_TOKEN, OWNER_ID
+import database as db
+
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# PERMISSION CHECK HELPERS
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-async def is_owner_or_sudo(app: Client, user_id: int) -> bool:
-    """Owner or Sudo returns TRUE"""
+# initialize DB
+db.init_db()
+
+# ---------- Permission helpers ----------
+async def is_owner_or_sudo(user_id: int) -> bool:
     if user_id == OWNER_ID:
         return True
-    return user_id in get_sudos()
+    sudos = db.get_sudos()
+    return user_id in sudos
 
-
-async def is_group_admin(app: Client, chat_id: int, user_id: int) -> bool:
-    """Check if user is admin in a group"""
+async def is_group_admin(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int) -> bool:
     try:
-        member = await app.get_chat_member(chat_id, user_id)
+        member: ChatMember = await context.bot.get_chat_member(chat_id, user_id)
         return member.status in ("administrator", "creator")
-    except:
+    except Exception:
         return False
 
+# ---------- Decorator-like guard for groups only ----------
+def groups_only(func):
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if update.effective_chat is None or update.effective_chat.type not in (Chat.GROUP, Chat.SUPERGROUP):
+            await update.message.reply_text("This command can only be used in groups/supergroups.")
+            return
+        return await func(update, context)
+    return wrapper
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# BOT INIT
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-app = Client("admin-bot", bot_token=BOT_TOKEN)
-init_db()
+# ---------- Start ----------
+@groups_only
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Bot is active in this group.")
 
+# ---------- Sudo management (Owner + Sudo) ----------
+@groups_only
+async def addsudo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sender = update.effective_user.id
+    if not await is_owner_or_sudo(sender):
+        await update.message.reply_text("❌ Unauthorized")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /addsudo <user_id>")
+        return
+    try:
+        target = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("Invalid user id.")
+        return
+    db.add_sudo(target)
+    await update.message.reply_text(f"✅ Added sudo: `{target}`", parse_mode=constants.ParseMode.MARKDOWN)
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# BASIC COMMANDS
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-@app.on_message(filters.command("start"))
-async def start_cmd(client, message):
-    await message.reply_text("✅ Bot is running (pyrotgfork).")
+@groups_only
+async def rmsudo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sender = update.effective_user.id
+    if not await is_owner_or_sudo(sender):
+        await update.message.reply_text("❌ Unauthorized")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /rmsudo <user_id>")
+        return
+    try:
+        target = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("Invalid user id.")
+        return
+    db.rm_sudo(target)
+    await update.message.reply_text(f"✅ Removed sudo: `{target}`", parse_mode=constants.ParseMode.MARKDOWN)
 
+# ---------- Global admin management (Owner + Sudo) ----------
+@groups_only
+async def addadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sender = update.effective_user.id
+    if not await is_owner_or_sudo(sender):
+        await update.message.reply_text("❌ Unauthorized")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /addadmin <user_id>")
+        return
+    try:
+        target = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("Invalid user id.")
+        return
+    db.add_global_admin(target)
+    await update.message.reply_text(f"✅ Added global admin: `{target}`", parse_mode=constants.ParseMode.MARKDOWN)
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# SUDO MANAGEMENT (Owner + Sudo)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-@app.on_message(filters.command("addsudo"))
-async def add_sudo_cmd(client, message):
-    if not await is_owner_or_sudo(client, message.from_user.id):
-        return await message.reply_text("❌ Unauthorized")
+@groups_only
+async def rmadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sender = update.effective_user.id
+    if not await is_owner_or_sudo(sender):
+        await update.message.reply_text("❌ Unauthorized")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /rmadmin <user_id>")
+        return
+    try:
+        target = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("Invalid user id.")
+        return
+    db.rm_global_admin(target)
+    await update.message.reply_text(f"✅ Removed global admin: `{target}`", parse_mode=constants.ParseMode.MARKDOWN)
 
-    if len(message.command) < 2:
-        return await message.reply_text("Usage: /addsudo <user_id>")
+# ---------- Allstaff ----------
+@groups_only
+async def allstaff(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sender = update.effective_user.id
+    if not await is_owner_or_sudo(sender):
+        await update.message.reply_text("❌ Unauthorized")
+        return
 
-    target = int(message.command[1])
-    add_sudo(target)
-    await message.reply_text(f"✅ Sudo added: `{target}`", parse_mode="md")
+    sudos = db.get_sudos()
+    text_lines = [f"👑 Owner: [Owner](tg://user?id={OWNER_ID}) (`{OWNER_ID}`)\n"]
+    if sudos:
+        text_lines.append("🔧 Sudos:")
+        for s in sudos:
+            text_lines.append(f"- [User](tg://user?id={s}) (`{s}`)")
+    else:
+        text_lines.append("No sudos set.")
+    await update.message.reply_text("\n".join(text_lines), parse_mode=constants.ParseMode.MARKDOWN)
 
+# ---------- Directory (/directory available to Owner/Sudo and group admins) ----------
+@groups_only
+async def directory(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sender = update.effective_user.id
+    chat = update.effective_chat
 
-@app.on_message(filters.command("rmsudo"))
-async def remove_sudo_cmd(client, message):
-    if not await is_owner_or_sudo(client, message.from_user.id):
-        return await message.reply_text("❌ Unauthorized")
-
-    if len(message.command) < 2:
-        return await message.reply_text("Usage: /rmsudo <user_id>")
-
-    target = int(message.command[1])
-    rm_sudo(target)
-    await message.reply_text(f"🗑 Removed sudo `{target}`", parse_mode="md")
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# GLOBAL ADMINS (Owner + Sudo)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-@app.on_message(filters.command("addadmin"))
-async def add_admin_cmd(client, message):
-    if not await is_owner_or_sudo(client, message.from_user.id):
-        return await message.reply_text("❌ Unauthorized")
-
-    if len(message.command) < 2:
-        return await message.reply_text("Usage: /addadmin <user_id>")
-
-    target = int(message.command[1])
-    add_global_admin(target)
-    await message.reply_text(f"✅ Global admin added `{target}`")
-
-
-@app.on_message(filters.command("rmadmin"))
-async def rm_admin_cmd(client, message):
-    if not await is_owner_or_sudo(client, message.from_user.id):
-        return await message.reply_text("❌ Unauthorized")
-
-    if len(message.command) < 2:
-        return await message.reply_text("Usage: /rmadmin <user_id>")
-
-    target = int(message.command[1])
-    rm_global_admin(target)
-    await message.reply_text(f"🗑 Global admin removed `{target}`")
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# ALL STAFF
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-@app.on_message(filters.command("allstaff"))
-async def allstaff_cmd(client, message):
-    if not await is_owner_or_sudo(client, message.from_user.id):
-        return await message.reply_text("❌ Unauthorized")
-
-    sudos = get_sudos()
-    text = f"👑 **Owner:** [Owner](tg://user?id={OWNER_ID}) (`{OWNER_ID}`)\n\n"
-
-    text += "🔧 **Sudos:**\n" if sudos else "No sudos.\n"
-
-    for s in sudos:
-        text += f"- [User](tg://user?id={s}) (`{s}`)\n"
-
-    await message.reply_text(text, parse_mode="md")
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# DIRECTORY SYSTEM
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-@app.on_message(filters.command("directory"))
-async def directory_cmd(client, message):
-    sender = message.from_user.id
-    chat = message.chat
-
-    # Allowed: owner + sudo + group admins
-    allowed = (
-        await is_owner_or_sudo(client, sender)
-        or (chat.type in ("group", "supergroup") and await is_group_admin(client, chat.id, sender))
-    )
+    allowed = False
+    if await is_owner_or_sudo(sender):
+        allowed = True
+    else:
+        # group admins allowed (group context guaranteed by decorator)
+        if await is_group_admin(context, chat.id, sender):
+            allowed = True
 
     if not allowed:
-        return await message.reply_text("❌ You cannot use this command.")
+        await update.message.reply_text("❌ You don't have permission to view the directory.")
+        return
 
-    items = get_directory()
-    if not items:
-        return await message.reply_text("📭 Directory is empty.")
+    rows = db.get_directory()
+    if not rows:
+        await update.message.reply_text("Directory is empty.")
+        return
 
-    text = ""
-    for row in items:
-        text += f"- [{row['title']}]({row['link']}) — `{row['chat_id']}` ({row['chat_type']})\n"
+    lines = []
+    for r in rows:
+        title = r["title"] or str(r["chat_id"])
+        link = r["link"]
+        cid = r["chat_id"]
+        ctype = r["chat_type"]
+        lines.append(f"- [{title}]({link}) — `{cid}` ({ctype})")
 
-    await message.reply_text(text, parse_mode="md")
+    await update.message.reply_text("\n".join(lines), parse_mode=constants.ParseMode.MARKDOWN)
 
-
-@app.on_message(filters.command("addgroup"))
-async def add_group_cmd(client, message):
-    if not await is_owner_or_sudo(client, message.from_user.id):
-        return await message.reply_text("❌ Unauthorized")
-
-    if len(message.command) < 3:
-        return await message.reply_text("Usage: /addgroup <chat_id> <group_link>")
-
-    cid = int(message.command[1])
-    link = message.command[2]
-
+@groups_only
+async def addgroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sender = update.effective_user.id
+    if not await is_owner_or_sudo(sender):
+        await update.message.reply_text("❌ Unauthorized")
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text("Usage: /addgroup <group-id> <group-link>")
+        return
     try:
-        chat = await client.get_chat(cid)
-        title = chat.title or "Unknown Group"
-    except:
-        title = "Unknown Group"
-
-    add_directory(cid, "group", link, title)
-    await message.reply_text("✅ Group added.")
-
-
-@app.on_message(filters.command("rmgroup"))
-async def rm_group_cmd(client, message):
-    if not await is_owner_or_sudo(client, message.from_user.id):
-        return await message.reply_text("❌ Unauthorized")
-
-    if len(message.command) < 2:
-        return await message.reply_text("Usage: /rmgroup <chat_id>")
-
-    cid = int(message.command[1])
-    rm_directory(cid)
-    await message.reply_text("🗑 Group removed.")
-
-
-@app.on_message(filters.command("addchannel"))
-async def add_channel_cmd(client, message):
-    if not await is_owner_or_sudo(client, message.from_user.id):
-        return await message.reply_text("❌ Unauthorized")
-
-    if len(message.command) < 3:
-        return await message.reply_text("Usage: /addchannel <chat_id> <link>")
-
-    cid = int(message.command[1])
-    link = message.command[2]
-
+        cid = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("Invalid chat id.")
+        return
+    link = context.args[1]
+    # try to fetch title if bot is in that chat
+    title = ""
     try:
-        chat = await client.get_chat(cid)
-        title = chat.title or "Unknown Channel"
-    except:
-        title = "Unknown Channel"
+        chat = await context.bot.get_chat(cid)
+        title = getattr(chat, "title", "")
+    except Exception:
+        title = ""
+    db.add_directory(cid, "group", link, title)
+    await update.message.reply_text(f"✅ Added group `{cid}` to directory.")
 
-    add_directory(cid, "channel", link, title)
-    await message.reply_text("📡 Channel added.")
+@groups_only
+async def rmgroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sender = update.effective_user.id
+    if not await is_owner_or_sudo(sender):
+        await update.message.reply_text("❌ Unauthorized")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /rmgroup <group-id>")
+        return
+    try:
+        cid = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("Invalid chat id.")
+        return
+    db.rm_directory(cid)
+    await update.message.reply_text(f"🗑 Removed `{cid}` from directory.")
 
+@groups_only
+async def addchannel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sender = update.effective_user.id
+    if not await is_owner_or_sudo(sender):
+        await update.message.reply_text("❌ Unauthorized")
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text("Usage: /addchannel <channel-id> <channel-link>")
+        return
+    try:
+        cid = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("Invalid chat id.")
+        return
+    link = context.args[1]
+    title = ""
+    try:
+        chat = await context.bot.get_chat(cid)
+        title = getattr(chat, "title", "")
+    except Exception:
+        title = ""
+    db.add_directory(cid, "channel", link, title)
+    await update.message.reply_text(f"✅ Added channel `{cid}` to directory.")
 
-@app.on_message(filters.command("rmchannel"))
-async def rm_channel_cmd(client, message):
-    if not await is_owner_or_sudo(client, message.from_user.id):
-        return await message.reply_text("❌ Unauthorized")
+@groups_only
+async def rmchannel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sender = update.effective_user.id
+    if not await is_owner_or_sudo(sender):
+        await update.message.reply_text("❌ Unauthorized")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /rmchannel <channel-id>")
+        return
+    try:
+        cid = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("Invalid chat id.")
+        return
+    db.rm_directory(cid)
+    await update.message.reply_text(f"🗑 Removed channel `{cid}` from directory.")
 
-    if len(message.command) < 2:
-        return await message.reply_text("Usage: /rmchannel <chat_id>")
+# ---------- nban / unban (Owner + Sudo) ----------
+@groups_only
+async def nban(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sender = update.effective_user.id
+    if not await is_owner_or_sudo(sender):
+        await update.message.reply_text("❌ Unauthorized")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /nban <user_id>")
+        return
+    try:
+        target = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("Invalid user id.")
+        return
 
-    cid = int(message.command[1])
-    rm_directory(cid)
-    await message.reply_text("🗑 Channel removed.")
+    rows = db.get_directory()
+    if not rows:
+        await update.message.reply_text("Directory empty. Nothing to ban from.")
+        return
 
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# GLOBAL BAN SYSTEM
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-@app.on_message(filters.command("nban"))
-async def nban_cmd(client, message):
-    if not await is_owner_or_sudo(client, message.from_user.id):
-        return await message.reply_text("❌ Unauthorized")
-
-    if len(message.command) < 2:
-        return await message.reply_text("Usage: /nban <user_id>")
-
-    target = int(message.command[1])
-    add_global_ban(target)
-
-    ok = fail = 0
-    for d in get_directory():
+    db.add_global_ban(target, reason="nban")
+    success = fail = 0
+    for r in rows:
         try:
-            await client.ban_chat_member(d["chat_id"], target)
-            ok += 1
-        except:
+            await context.bot.ban_chat_member(r["chat_id"], target)
+            success += 1
+        except Exception as e:
+            log.warning("Failed to ban %s in %s: %s", target, r["chat_id"], e)
             fail += 1
 
-    await message.reply_text(f"🚫 Global Ban → Success: {ok}, Failed: {fail}")
+    await update.message.reply_text(f"✅ Global ban attempted. Success: {success}, Failed: {fail}")
 
+@groups_only
+async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sender = update.effective_user.id
+    if not await is_owner_or_sudo(sender):
+        await update.message.reply_text("❌ Unauthorized")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /unban <user_id>")
+        return
+    try:
+        target = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("Invalid user id.")
+        return
 
-@app.on_message(filters.command("unban"))
-async def unban_cmd(client, message):
-    if not await is_owner_or_sudo(client, message.from_user.id):
-        return await message.reply_text("❌ Unauthorized")
+    rows = db.get_directory()
+    if not rows:
+        await update.message.reply_text("Directory empty. Nothing to unban in.")
+        return
 
-    if len(message.command) < 2:
-        return await message.reply_text("Usage: /unban <user_id>")
-
-    target = int(message.command[1])
-    rm_global_ban(target)
-
-    ok = fail = 0
-    for d in get_directory():
+    db.rm_global_ban(target)
+    success = fail = 0
+    for r in rows:
         try:
-            await client.unban_chat_member(d["chat_id"], target)
-            ok += 1
-        except:
+            await context.bot.unban_chat_member(r["chat_id"], target)
+            success += 1
+        except Exception as e:
+            log.warning("Failed to unban %s in %s: %s", target, r["chat_id"], e)
             fail += 1
 
-    await message.reply_text(f"♻ Global Unban → Success: {ok}, Failed: {fail}")
+    await update.message.reply_text(f"✅ Global unban attempted. Success: {success}, Failed: {fail}")
 
+# ---------- ginfo (Owner + Sudo only) ----------
+@groups_only
+async def ginfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sender = update.effective_user.id
+    if not await is_owner_or_sudo(sender):
+        await update.message.reply_text("❌ Unauthorized")
+        return
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# GROUP INFO (Owner + Sudo ONLY)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-@app.on_message(filters.command("ginfo"))
-async def ginfo_cmd(client, message):
-    if not await is_owner_or_sudo(client, message.from_user.id):
-        return await message.reply_text("❌ Owner/Sudo only.")
-
-    if len(message.command) >= 2:
-        chat_id = int(message.command[1])
+    # accept chat_id argument or run inside the target group
+    if context.args:
+        try:
+            target_chat = int(context.args[0])
+        except ValueError:
+            await update.message.reply_text("Usage: /ginfo <chat_id>")
+            return
     else:
-        if message.chat.type in ("group", "supergroup"):
-            chat_id = message.chat.id
-        else:
-            return await message.reply_text("Usage: /ginfo <chat_id>")
+        # in group: use current chat
+        target_chat = update.effective_chat.id
 
     try:
-        chat = await client.get_chat(chat_id)
-        members = await client.get_chat_members_count(chat_id)
+        chat = await context.bot.get_chat(target_chat)
+        try:
+            members = await context.bot.get_chat_members_count(target_chat)
+        except Exception:
+            members = "unknown"
 
+        title = getattr(chat, "title", getattr(chat, "first_name", "N/A"))
         text = (
-            f"📊 **Group Info**:\n\n"
-            f"Title: `{chat.title}`\n"
-            f"ID: `{chat.id}`\n"
+            f"**Group Info**\n\n"
+            f"Title: `{title}`\n"
+            f"Chat ID: `{target_chat}`\n"
             f"Type: `{chat.type}`\n"
             f"Members: `{members}`\n"
         )
+        if getattr(chat, "username", None):
+            text += f"Username: @{chat.username}\n"
 
-        await message.reply_text(text, parse_mode="md")
-    except:
-        await message.reply_text("❌ Could not fetch group info.")
+        await update.message.reply_text(text, parse_mode=constants.ParseMode.MARKDOWN)
+    except Exception as e:
+        log.exception(e)
+        await update.message.reply_text("Failed to fetch chat info. Ensure bot is in that chat or ID is valid.")
 
+# ---------- Setup & run ----------
+def main():
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# RUN BOT
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # basic
+    app.add_handler(CommandHandler("start", start))
+
+    # staff
+    app.add_handler(CommandHandler("addsudo", addsudo))
+    app.add_handler(CommandHandler("rmsudo", rmsudo))
+    app.add_handler(CommandHandler("addadmin", addadmin))
+    app.add_handler(CommandHandler("rmadmin", rmadmin))
+    app.add_handler(CommandHandler("allstaff", allstaff))
+
+    # directory
+    app.add_handler(CommandHandler("directory", directory))
+    app.add_handler(CommandHandler("addgroup", addgroup))
+    app.add_handler(CommandHandler("rmgroup", rmgroup))
+    app.add_handler(CommandHandler("addchannel", addchannel))
+    app.add_handler(CommandHandler("rmchannel", rmchannel))
+
+    # bans
+    app.add_handler(CommandHandler("nban", nban))
+    app.add_handler(CommandHandler("unban", unban))
+
+    # ginfo
+    app.add_handler(CommandHandler("ginfo", ginfo))
+
+    print("Starting bot (groups-only mode)...")
+    app.run_polling()
+
 if __name__ == "__main__":
-    print("Bot is running with pyrotgfork...")
-    app.run()
+    main()
