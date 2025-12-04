@@ -1,123 +1,193 @@
 # database.py
-
 import sqlite3
-from config import DB_PATH
+from datetime import datetime
 
-def get_db():
-    conn = sqlite3.connect(DB_PATH, timeout=10, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
+DB = "bot.db"
 
+# ---------------------------------------------------
+# INIT
+# ---------------------------------------------------
 def init_db():
-    db = get_db()
-    cur = db.cursor()
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
 
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS sudos(
+        CREATE TABLE IF NOT EXISTS sudos (
             user_id INTEGER PRIMARY KEY
-        );
+        )
     """)
 
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS global_admins(
+        CREATE TABLE IF NOT EXISTS global_admins (
             user_id INTEGER PRIMARY KEY
-        );
+        )
     """)
 
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS directory(
+        CREATE TABLE IF NOT EXISTS directory (
             chat_id INTEGER PRIMARY KEY,
-            chat_type TEXT,
+            type TEXT,
             link TEXT,
             title TEXT
-        );
+        )
     """)
 
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS banned_global(
-            user_id INTEGER PRIMARY KEY,
-            reason TEXT
-        );
+        CREATE TABLE IF NOT EXISTS global_bans (
+            user_id INTEGER PRIMARY KEY
+        )
     """)
 
-    db.commit()
-    db.close()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS admin_cache (
+            chat_id INTEGER,
+            user_id INTEGER,
+            PRIMARY KEY (chat_id, user_id)
+        )
+    """)
 
-# ---------- Sudo ----------
-def add_sudo(uid):
-    db = get_db()
-    db.execute("INSERT OR IGNORE INTO sudos (user_id) VALUES (?)", (uid,))
-    db.commit()
-    db.close()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS admin_titles (
+            chat_id INTEGER,
+            user_id INTEGER,
+            title TEXT,
+            PRIMARY KEY (chat_id, user_id)
+        )
+    """)
 
-def rm_sudo(uid):
-    db = get_db()
-    db.execute("DELETE FROM sudos WHERE user_id = ?", (uid,))
-    db.commit()
-    db.close()
+    conn.commit()
+    conn.close()
 
+# ---------------------------------------------------
+# SUDO
+# ---------------------------------------------------
 def get_sudos():
-    db = get_db()
-    rows = db.execute("SELECT user_id FROM sudos").fetchall()
-    db.close()
-    return [r["user_id"] for r in rows]
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+    rows = cur.execute("SELECT user_id FROM sudos").fetchall()
+    conn.close()
+    return [r[0] for r in rows]
 
-# ---------- Global Admin ----------
-def add_global_admin(uid):
-    db = get_db()
-    db.execute("INSERT OR IGNORE INTO global_admins (user_id) VALUES (?)", (uid,))
-    db.commit()
-    db.close()
+def add_sudo(uid: int):
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+    cur.execute("INSERT OR IGNORE INTO sudos (user_id) VALUES (?)", (uid,))
+    conn.commit()
+    conn.close()
 
-def rm_global_admin(uid):
-    db = get_db()
-    db.execute("DELETE FROM global_admins WHERE user_id = ?", (uid,))
-    db.commit()
-    db.close()
+def rm_sudo(uid: int):
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM sudos WHERE user_id=?", (uid,))
+    conn.commit()
+    conn.close()
 
-def get_global_admins():
-    db = get_db()
-    rows = db.execute("SELECT user_id FROM global_admins").fetchall()
-    db.close()
-    return [r["user_id"] for r in rows]
 
-# ---------- Directory ----------
-def add_directory(cid, ctype, link, title=""):
-    db = get_db()
-    db.execute("""
-        INSERT OR REPLACE INTO directory (chat_id, chat_type, link, title)
+# ---------------------------------------------------
+# GLOBAL ADMINS
+# ---------------------------------------------------
+def add_global_admin(uid: int):
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+    cur.execute("INSERT OR IGNORE INTO global_admins (user_id) VALUES (?)", (uid,))
+    conn.commit()
+    conn.close()
+
+def rm_global_admin(uid: int):
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM global_admins WHERE user_id=?", (uid,))
+    conn.commit()
+    conn.close()
+
+
+# ---------------------------------------------------
+# DIRECTORY
+# ---------------------------------------------------
+def add_directory(chat_id, type_, link, title):
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT OR REPLACE INTO directory (chat_id, type, link, title)
         VALUES (?, ?, ?, ?)
-    """, (cid, ctype, link, title))
-    db.commit()
-    db.close()
+    """, (chat_id, type_, link, title))
+    conn.commit()
+    conn.close()
 
-def rm_directory(cid):
-    db = get_db()
-    db.execute("DELETE FROM directory WHERE chat_id = ?", (cid,))
-    db.commit()
-    db.close()
+def rm_directory(chat_id):
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM directory WHERE chat_id=?", (chat_id,))
+    conn.commit()
+    conn.close()
 
 def get_directory():
-    db = get_db()
-    rows = db.execute("SELECT * FROM directory").fetchall()
-    db.close()
+    conn = sqlite3.connect(DB)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    rows = cur.execute("SELECT * FROM directory").fetchall()
+    conn.close()
     return rows
 
-# ---------- Global Bans ----------
-def add_global_ban(uid, reason=""):
-    db = get_db()
-    db.execute("INSERT OR IGNORE INTO banned_global (user_id, reason) VALUES (?, ?)", (uid, reason))
-    db.commit()
-    db.close()
+
+# ---------------------------------------------------
+# GLOBAL BANS
+# ---------------------------------------------------
+def add_global_ban(uid):
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+    cur.execute("INSERT OR IGNORE INTO global_bans (user_id) VALUES (?)", (uid,))
+    conn.commit()
+    conn.close()
 
 def rm_global_ban(uid):
-    db = get_db()
-    db.execute("DELETE FROM banned_global WHERE user_id = ?", (uid,))
-    db.commit()
-    db.close()
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM global_bans WHERE user_id=?", (uid,))
+    conn.commit()
+    conn.close()
 
-def get_global_bans():
-    db = get_db()
-    rows = db.execute("SELECT user_id FROM banned_global").fetchall()
-    db.close()
-    return [r["user_id"] for r in rows]
+
+# ---------------------------------------------------
+# ADMIN CACHE
+# ---------------------------------------------------
+def cache_admins(chat_id, user_ids):
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+
+    # Clear old cache
+    cur.execute("DELETE FROM admin_cache WHERE chat_id=?", (chat_id,))
+
+    # Insert new cache
+    for uid in user_ids:
+        cur.execute(
+            "INSERT INTO admin_cache (chat_id, user_id) VALUES (?, ?)",
+            (chat_id, uid)
+        )
+
+    conn.commit()
+    conn.close()
+
+
+# ---------------------------------------------------
+# ADMIN TITLES
+# ---------------------------------------------------
+def save_admin_title(chat_id, user_id, title):
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT OR REPLACE INTO admin_titles (chat_id, user_id, title)
+        VALUES (?, ?, ?)
+    """, (chat_id, user_id, title))
+    conn.commit()
+    conn.close()
+
+def get_admin_title(chat_id, user_id):
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+    row = cur.execute(
+        "SELECT title FROM admin_titles WHERE chat_id=? AND user_id=?",
+        (chat_id, user_id)
+    ).fetchone()
+    conn.close()
+    return row[0] if row else None
