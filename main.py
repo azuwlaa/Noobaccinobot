@@ -1,15 +1,3 @@
-"""
-Telegram Bot with pyrotgfork
-Fully implemented:
-- Owner + Sudo + Group Admin system
-- Add/remove sudo/admin
-- Directory system (groups & channels)
-- Global ban/unban
-- /allstaff with hyperlinks
-- /ginfo restricted to Owner/Sudo
-- /directory allowed for Owner/Sudo AND group admins
-"""
-
 import os
 import sqlite3
 import logging
