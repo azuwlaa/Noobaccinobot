@@ -6,9 +6,9 @@ from telegram.constants import ParseMode
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
-    ContextTypes,
-    filters,
+    ContextTypes
 )
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from config import BOT_TOKEN, OWNER_ID
 import database as db
@@ -56,7 +56,6 @@ async def addsudo(update, context):
     uid = update.effective_user.id
     if not await is_owner_or_sudo(uid):
         return await update.message.reply_text("❌ Unauthorized.")
-
     if not context.args:
         return await update.message.reply_text("Usage: /addsudo <id>")
 
@@ -73,7 +72,6 @@ async def rmsudo(update, context):
     uid = update.effective_user.id
     if not await is_owner_or_sudo(uid):
         return await update.message.reply_text("❌ Unauthorized.")
-
     if not context.args:
         return await update.message.reply_text("Usage: /rmsudo <id>")
 
@@ -86,14 +84,13 @@ async def rmsudo(update, context):
     await update.message.reply_text(f"Removed sudo:\n`{target}`", parse_mode=ParseMode.MARKDOWN)
 
 # ---------------------------------------------------
-# GLOBAL ADMINS
+# ADMINS
 # ---------------------------------------------------
 @groups_only
 async def addadmin(update, context):
     uid = update.effective_user.id
     if not await is_owner_or_sudo(uid):
         return await update.message.reply_text("❌ Unauthorized.")
-
     if not context.args:
         return await update.message.reply_text("Usage: /addadmin <id>")
 
@@ -110,7 +107,6 @@ async def rmadmin(update, context):
     uid = update.effective_user.id
     if not await is_owner_or_sudo(uid):
         return await update.message.reply_text("❌ Unauthorized.")
-
     if not context.args:
         return await update.message.reply_text("Usage: /rmadmin <id>")
 
@@ -144,14 +140,13 @@ async def allstaff(update, context):
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
 # ---------------------------------------------------
-# DIRECTORY — CLEAN OUTPUT
+# DIRECTORY — HIDDEN LINKS
 # ---------------------------------------------------
 @groups_only
 async def directory(update, context):
     uid = update.effective_user.id
     chat = update.effective_chat
 
-    # Permission: owner/sudo OR group admin
     if not (await is_owner_or_sudo(uid) or await is_group_admin(context.bot, chat.id, uid)):
         return await update.message.reply_text("❌ No permission to view directory.")
 
@@ -159,24 +154,17 @@ async def directory(update, context):
     if not rows:
         return await update.message.reply_text("📭 Directory empty.")
 
-    # Clean bullet list
-    lines = []
-    for r in rows:
-        name = r["title"] or "Unnamed"
-        link = r["link"]
-        lines.append(f"• [{name}]({link})")
-
+    lines = [f"• [{r['title']}]({r['link']})" for r in rows]
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
 # ---------------------------------------------------
-# ADD GROUP — BOT MUST BE ADMIN
+# ADD GROUP / CHANNEL
 # ---------------------------------------------------
 @groups_only
 async def addgroup(update, context):
     uid = update.effective_user.id
     if not await is_owner_or_sudo(uid):
         return await update.message.reply_text("❌ Unauthorized.")
-
     if len(context.args) < 2:
         return await update.message.reply_text("Usage: /addgroup <group-id> <invite-link>")
 
@@ -187,7 +175,7 @@ async def addgroup(update, context):
 
     link = context.args[1]
 
-    # Check bot is admin
+    # Must be admin
     try:
         bot_member = await context.bot.get_chat_member(cid, context.bot.id)
         if bot_member.status not in ("administrator", "creator"):
@@ -195,25 +183,17 @@ async def addgroup(update, context):
     except:
         return await update.message.reply_text("❌ Bot is not in that group.")
 
-    # Fetch chat title
-    try:
-        chat = await context.bot.get_chat(cid)
-        title = chat.title or "Unnamed Group"
-    except:
-        title = "Unnamed Group"
+    chat = await context.bot.get_chat(cid)
+    title = chat.title or "Unnamed Group"
 
     db.add_directory(cid, "group", link, title)
     await update.message.reply_text(f"✅ Added **{title}** to directory.")
 
-# ---------------------------------------------------
-# ADD CHANNEL — BOT MUST BE ADMIN
-# ---------------------------------------------------
 @groups_only
 async def addchannel(update, context):
     uid = update.effective_user.id
     if not await is_owner_or_sudo(uid):
         return await update.message.reply_text("❌ Unauthorized.")
-
     if len(context.args) < 2:
         return await update.message.reply_text("Usage: /addchannel <channel-id> <invite-link>")
 
@@ -224,7 +204,6 @@ async def addchannel(update, context):
 
     link = context.args[1]
 
-    # Check bot admin
     try:
         bot_member = await context.bot.get_chat_member(cid, context.bot.id)
         if bot_member.status not in ("administrator", "creator"):
@@ -232,25 +211,20 @@ async def addchannel(update, context):
     except:
         return await update.message.reply_text("❌ Bot cannot access that channel.")
 
-    # Fetch title
-    try:
-        chat = await context.bot.get_chat(cid)
-        title = chat.title or "Unnamed Channel"
-    except:
-        title = "Unnamed Channel"
+    chat = await context.bot.get_chat(cid)
+    title = chat.title or "Unnamed Channel"
 
     db.add_directory(cid, "channel", link, title)
     await update.message.reply_text(f"📡 Added **{title}** to directory.")
 
 # ---------------------------------------------------
-# REMOVE FROM DIRECTORY
+# REMOVE DIRECTORY
 # ---------------------------------------------------
 @groups_only
 async def rmgroup(update, context):
     uid = update.effective_user.id
     if not await is_owner_or_sudo(uid):
         return await update.message.reply_text("❌ Unauthorized.")
-
     if not context.args:
         return await update.message.reply_text("Usage: /rmgroup <id>")
 
@@ -262,7 +236,6 @@ async def rmchannel(update, context):
     uid = update.effective_user.id
     if not await is_owner_or_sudo(uid):
         return await update.message.reply_text("❌ Unauthorized.")
-
     if not context.args:
         return await update.message.reply_text("Usage: /rmchannel <id>")
 
@@ -270,22 +243,18 @@ async def rmchannel(update, context):
     await update.message.reply_text("🗑 Channel removed.")
 
 # ---------------------------------------------------
-# NBAN / UNBAN — GLOBAL
+# GLOBAL BAN
 # ---------------------------------------------------
 @groups_only
 async def nban(update, context):
     uid = update.effective_user.id
     if not await is_owner_or_sudo(uid):
         return await update.message.reply_text("❌ Unauthorized.")
-
     if not context.args:
         return await update.message.reply_text("Usage: /nban <user_id>")
 
     target = int(context.args[0])
     rows = db.get_directory()
-    if not rows:
-        return await update.message.reply_text("Directory empty.")
-
     db.add_global_ban(target)
     ok = fail = 0
 
@@ -303,15 +272,11 @@ async def unban(update, context):
     uid = update.effective_user.id
     if not await is_owner_or_sudo(uid):
         return await update.message.reply_text("❌ Unauthorized.")
-
     if not context.args:
         return await update.message.reply_text("Usage: /unban <user_id>")
 
     target = int(context.args[0])
     rows = db.get_directory()
-    if not rows:
-        return await update.message.reply_text("Directory empty.")
-
     db.rm_global_ban(target)
     ok = fail = 0
 
@@ -325,7 +290,103 @@ async def unban(update, context):
     await update.message.reply_text(f"Global unban → OK: {ok}, Failed: {fail}")
 
 # ---------------------------------------------------
-# GINFO — OWNER/SUDO ONLY
+# PROMOTE ADMINS
+# ---------------------------------------------------
+@groups_only
+async def promote(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    chat = update.effective_chat
+
+    if not (await is_owner_or_sudo(uid) or await is_group_admin(context.bot, chat.id, uid)):
+        return await update.message.reply_text("❌ No permission.")
+
+    if not context.args:
+        return await update.message.reply_text("Usage:\n/promote <title> <user(s)> OR reply + /promote <title>")
+
+    title = context.args[0]
+    targets = []
+
+    # Reply mode
+    if update.message.reply_to_message:
+        targets.append(update.message.reply_to_message.from_user.id)
+
+    # Direct mode
+    for arg in context.args[1:]:
+        try:
+            if arg.startswith("@"):
+                user = await context.bot.get_chat_member(chat.id, arg)
+                targets.append(user.user.id)
+            else:
+                targets.append(int(arg))
+        except:
+            pass
+
+    if not targets:
+        return await update.message.reply_text("❌ No valid users found.")
+
+    promoted = 0
+    failed = 0
+
+    for u in targets:
+        try:
+            await context.bot.promote_chat_member(
+                chat.id,
+                u,
+                can_change_info=True,
+                can_delete_messages=True,
+                can_invite_users=True,
+                can_manage_chat=True,
+                can_manage_topics=True,
+                can_manage_video_chats=True
+            )
+            db.save_admin_title(chat.id, u, title)
+            promoted += 1
+        except:
+            failed += 1
+
+    await update.message.reply_text(
+        f"👑 Promotion results:\nPromoted: `{promoted}`\nFailed: `{failed}`",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+# ---------------------------------------------------
+# ADMIN CACHE
+# ---------------------------------------------------
+async def auto_cache(context: ContextTypes.DEFAULT_TYPE):
+    rows = db.get_directory()
+    for r in rows:
+        try:
+            admins = await context.bot.get_chat_administrators(r["chat_id"])
+            admin_ids = [a.user.id for a in admins]
+            db.cache_admins(r["chat_id"], admin_ids)
+        except:
+            pass
+
+@groups_only
+async def cache(update, context):
+    uid = update.effective_user.id
+    if not await is_owner_or_sudo(uid):
+        return await update.message.reply_text("❌ Unauthorized.")
+
+    rows = db.get_directory()
+    done = 0
+
+    for r in rows:
+        try:
+            admins = await context.bot.get_chat_administrators(r["chat_id"])
+            admin_ids = [a.user.id for a in admins]
+            db.cache_admins(r["chat_id"], admin_ids)
+            done += 1
+        except:
+            pass
+
+    await update.message.reply_text(
+        f"🔄 Cached admin lists for `{done}` groups.",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+# ---------------------------------------------------
+# GINFO
 # ---------------------------------------------------
 @groups_only
 async def ginfo(update, context):
@@ -333,14 +394,12 @@ async def ginfo(update, context):
     if not await is_owner_or_sudo(uid):
         return await update.message.reply_text("❌ Owner/Sudo only.")
 
-    if context.args:
-        chat_id = int(context.args[0])
-    else:
-        chat_id = update.effective_chat.id
+    chat_id = int(context.args[0]) if context.args else update.effective_chat.id
 
     try:
         chat = await context.bot.get_chat(chat_id)
-        members = await context.bot.get_chat_members_count(chat_id)
+        members = await context.bot.get_chat_member_count(chat_id)
+
         await update.message.reply_text(
             f"**Group Info**\n"
             f"Title: `{chat.title}`\n"
@@ -358,6 +417,7 @@ async def ginfo(update, context):
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+    # Handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("addsudo", addsudo))
     app.add_handler(CommandHandler("rmsudo", rmsudo))
@@ -371,9 +431,16 @@ def main():
     app.add_handler(CommandHandler("rmchannel", rmchannel))
     app.add_handler(CommandHandler("nban", nban))
     app.add_handler(CommandHandler("unban", unban))
+    app.add_handler(CommandHandler("promote", promote))
+    app.add_handler(CommandHandler("cache", cache))
     app.add_handler(CommandHandler("ginfo", ginfo))
 
-    print("Bot running... (PTB v21, Groups Only)")
+    # Scheduler for auto admin caching
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(auto_cache, "interval", seconds=30, args=[app])
+    scheduler.start()
+
+    print("Bot running... (PTB v21)")
     app.run_polling()
 
 if __name__ == "__main__":
