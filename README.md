@@ -1,20 +1,35 @@
-# Noobaccinobot
-# Telegram Member Info Bot (Minimal Version)
+# Telegram Admin System Bot (pyrotgfork)
 
-A simple Telegram bot for storing and managing user information with admin access.
+A full-featured admin & directory management bot using **pyrotgfork**, including:
 
-## Features
+## 🔥 Features
+### 🔐 Permission Levels
+- **Owner** — full control  
+- **Sudo** — trusted admins  
+- **Admins** — group admins (group-only permissions)
 
-- Users can view their own info using `/myinfo`
-- Users can update allowed fields via `/updateinfo`
-- Admins can view full user info using `/thisuser <id>`
-- Stores data in `data/users.json`
-- Secure token handling using `.env`
+### 👥 Staff Management
+- `/addsudo <id>`
+- `/rmsudo <id>`
+- `/addadmin <id>`
+- `/rmadmin <id>`
+- `/allstaff`
+
+### 🗂 Directory System
+- `/directory`
+- `/addgroup <id> <link>`
+- `/rmgroup <id>`
+- `/addchannel <id> <link>`
+- `/rmchannel <id>`
+
+### 🚫 Global Ban System
+- `/nban <id>`
+- `/unban <id>`
+
+### 📊 Group Info
+- `/ginfo <id>`  
+*(Owner & Sudo only)*
 
 ---
 
-## Setup
-
-### 1. Install dependencies
-```bash
-pip install -r requirements.txt
+## ⚙ Setup
