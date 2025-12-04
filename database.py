@@ -1,7 +1,6 @@
 # database.py
-import sqlite3
-from typing import List, Optional
 
+import sqlite3
 from config import DB_PATH
 
 def get_db():
@@ -44,97 +43,81 @@ def init_db():
     db.commit()
     db.close()
 
-# Sudo functions
-def add_sudo(user_id: int):
+# ---------- Sudo ----------
+def add_sudo(uid):
     db = get_db()
-    cur = db.cursor()
-    cur.execute("INSERT OR IGNORE INTO sudos (user_id) VALUES (?)", (user_id,))
+    db.execute("INSERT OR IGNORE INTO sudos (user_id) VALUES (?)", (uid,))
     db.commit()
     db.close()
 
-def rm_sudo(user_id: int):
+def rm_sudo(uid):
     db = get_db()
-    cur = db.cursor()
-    cur.execute("DELETE FROM sudos WHERE user_id = ?", (user_id,))
+    db.execute("DELETE FROM sudos WHERE user_id = ?", (uid,))
     db.commit()
     db.close()
 
-def get_sudos() -> List[int]:
+def get_sudos():
     db = get_db()
-    cur = db.cursor()
-    cur.execute("SELECT user_id FROM sudos")
-    rows = cur.fetchall()
+    rows = db.execute("SELECT user_id FROM sudos").fetchall()
     db.close()
     return [r["user_id"] for r in rows]
 
-# Global admin functions
-def add_global_admin(user_id: int):
+# ---------- Global Admin ----------
+def add_global_admin(uid):
     db = get_db()
-    cur = db.cursor()
-    cur.execute("INSERT OR IGNORE INTO global_admins (user_id) VALUES (?)", (user_id,))
+    db.execute("INSERT OR IGNORE INTO global_admins (user_id) VALUES (?)", (uid,))
     db.commit()
     db.close()
 
-def rm_global_admin(user_id: int):
+def rm_global_admin(uid):
     db = get_db()
-    cur = db.cursor()
-    cur.execute("DELETE FROM global_admins WHERE user_id = ?", (user_id,))
+    db.execute("DELETE FROM global_admins WHERE user_id = ?", (uid,))
     db.commit()
     db.close()
 
-def get_global_admins() -> List[int]:
+def get_global_admins():
     db = get_db()
-    cur = db.cursor()
-    cur.execute("SELECT user_id FROM global_admins")
-    rows = cur.fetchall()
+    rows = db.execute("SELECT user_id FROM global_admins").fetchall()
     db.close()
     return [r["user_id"] for r in rows]
 
-# Directory
-def add_directory(chat_id: int, chat_type: str, link: str, title: Optional[str] = ""):
+# ---------- Directory ----------
+def add_directory(cid, ctype, link, title=""):
     db = get_db()
-    cur = db.cursor()
-    cur.execute(
-        "INSERT OR REPLACE INTO directory (chat_id, chat_type, link, title) VALUES (?, ?, ?, ?)",
-        (chat_id, chat_type, link, title or "")
-    )
+    db.execute("""
+        INSERT OR REPLACE INTO directory (chat_id, chat_type, link, title)
+        VALUES (?, ?, ?, ?)
+    """, (cid, ctype, link, title))
     db.commit()
     db.close()
 
-def rm_directory(chat_id: int):
+def rm_directory(cid):
     db = get_db()
-    cur = db.cursor()
-    cur.execute("DELETE FROM directory WHERE chat_id = ?", (chat_id,))
+    db.execute("DELETE FROM directory WHERE chat_id = ?", (cid,))
     db.commit()
     db.close()
 
 def get_directory():
     db = get_db()
-    cur = db.cursor()
-    cur.execute("SELECT chat_id, chat_type, link, title FROM directory")
-    rows = cur.fetchall()
+    rows = db.execute("SELECT * FROM directory").fetchall()
     db.close()
     return rows
 
-# Global bans
-def add_global_ban(user_id: int, reason: str = ""):
+# ---------- Global Bans ----------
+def add_global_ban(uid, reason=""):
     db = get_db()
-    cur = db.cursor()
-    cur.execute("INSERT OR IGNORE INTO banned_global (user_id, reason) VALUES (?, ?)", (user_id, reason))
+    db.execute("INSERT OR IGNORE INTO banned_global (user_id, reason) VALUES (?, ?)", (uid, reason))
     db.commit()
     db.close()
 
-def rm_global_ban(user_id: int):
+def rm_global_ban(uid):
     db = get_db()
-    cur = db.cursor()
-    cur.execute("DELETE FROM banned_global WHERE user_id = ?", (user_id,))
+    db.execute("DELETE FROM banned_global WHERE user_id = ?", (uid,))
     db.commit()
     db.close()
 
-def get_global_bans() -> List[int]:
+def get_global_bans():
     db = get_db()
-    cur = db.cursor()
-    cur.execute("SELECT user_id FROM banned_global")
-    rows = cur.fetchall()
+    rows = db.execute("SELECT user_id FROM banned_global").fetchall()
     db.close()
     return [r["user_id"] for r in rows]
